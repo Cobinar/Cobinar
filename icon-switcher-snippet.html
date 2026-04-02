@@ -1,0 +1,146 @@
+<!--
+  ╔═══════════════════════════════════════════════════════════════╗
+  ║           COBINAR — ICON & FAVICON SWITCHER SNIPPET          ║
+  ║                                                              ║
+  ║  Paste the <link> tags into your <head>.                     ║
+  ║  Paste the <script> block just before </body>.               ║
+  ║  Works with: cobinar.html, about.html, privacy.html          ║
+  ╚═══════════════════════════════════════════════════════════════╝
+-->
+
+<!-- ══ HEAD TAGS (paste inside <head>) ═════════════════════════ -->
+
+<link rel="manifest"           href="manifest.json"/>
+<link rel="icon"               id="faviconPng"   type="image/png" href="icons/black-icon-32.png"/>
+<link rel="icon"               id="faviconIco"   type="image/x-icon" href="icons/favicon.ico"/>
+<link rel="apple-touch-icon"   id="appleTouchIcon" sizes="180x180" href="icons/black-icon-180.png"/>
+<meta name="msapplication-TileImage" id="msTile" content="icons/black-icon-192.png"/>
+<meta name="msapplication-TileColor" content="#1a85ff"/>
+
+<!-- Force dark-mode Safari to use correct icon -->
+<link rel="mask-icon" href="icons/black.png" color="#1a85ff"/>
+
+
+<!-- ══ SCRIPT BLOCK (paste just before </body>) ════════════════ -->
+<script>
+/* ── Cobinar Icon + Favicon Switcher ─────────────────────────── *
+ *                                                                 *
+ *  Logic:                                                         *
+ *   • OS is in dark  mode  → use WHITE cat icons (visible on     *
+ *                            dark taskbar / dock / shelf)        *
+ *   • OS is in light mode  → use BLACK cat icons (visible on     *
+ *                            light taskbar / dock / shelf)       *
+ *                                                                 *
+ *  Also responds to:                                              *
+ *   • Real-time OS theme change (matchMedia listener)            *
+ *   • Message from Service Worker (ICON_UPDATE)                  *
+ * ─────────────────────────────────────────────────────────────── */
+(function () {
+  const ICONS = {
+    dark: {
+      /* OS dark mode  → WHITE cat (on dark backgrounds) */
+      favicon16:   'icons/white-icon-16.png',
+      favicon32:   'icons/white-icon-48.png',   // closest to 32
+      favicon64:   'icons/white-icon-64.png',
+      touch180:    'icons/white-icon-180.png',
+      tile192:     'icons/white-icon-192.png',
+      logo:        'icons/white.png',
+    },
+    light: {
+      /* OS light mode → BLACK cat (on light backgrounds) */
+      favicon16:   'icons/black-icon-16.png',
+      favicon32:   'icons/black-icon-48.png',
+      favicon64:   'icons/black-icon-64.png',
+      touch180:    'icons/black-icon-180.png',
+      tile192:     'icons/black-icon-192.png',
+      logo:        'icons/black.png',
+    },
+  };
+
+  /** Swap all icon tags for the given scheme ('dark' | 'light') */
+  function applyIconScheme(scheme) {
+    const set = ICONS[scheme] || ICONS.light;
+
+    const faviconPng     = document.getElementById('faviconPng');
+    const faviconIco     = document.getElementById('faviconIco');
+    const appleTouchIcon = document.getElementById('appleTouchIcon');
+    const msTile         = document.getElementById('msTile');
+    const logoImg        = document.getElementById('cobinarLogo');   // optional
+
+    if (faviconPng)     faviconPng.href      = set.favicon32;
+    if (appleTouchIcon) appleTouchIcon.href  = set.touch180;
+    if (msTile)         msTile.content       = set.tile192;
+
+    /* Update the inline nav logo image if you use one */
+    if (logoImg) {
+      logoImg.src = set.logo;
+      logoImg.style.transition = 'opacity .3s ease';
+      logoImg.style.opacity = '0';
+      setTimeout(() => { logoImg.style.opacity = '1'; }, 50);
+    }
+
+    /* Update the nav-logo pip accent color is handled by CSS theme vars */
+
+    /* Store so SW can read it */
+    localStorage.setItem('cobinar-icon-scheme', scheme);
+
+    /* Notify service worker of theme change */
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: 'THEME_CHANGE',
+        theme: scheme,
+      });
+    }
+  }
+
+  /** Read OS preference */
+  function getOSScheme() {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  }
+
+  /* Apply immediately on page load */
+  applyIconScheme(getOSScheme());
+
+  /* React to OS theme changes in real time */
+  window.matchMedia('(prefers-color-scheme: dark)')
+    .addEventListener('change', e => {
+      applyIconScheme(e.matches ? 'dark' : 'light');
+    });
+
+  /* React to SW-relayed theme change (cross-tab sync) */
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.addEventListener('message', event => {
+      if (event.data?.type === 'ICON_UPDATE') {
+        applyIconScheme(event.data.theme);
+      }
+    });
+  }
+
+  /* ── Service Worker Registration ───────────────────────────── */
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(reg => {
+          console.log('[Cobinar] SW registered. Scope:', reg.scope);
+
+          /* Check for updates every 60 seconds */
+          setInterval(() => reg.update(), 60000);
+
+          /* Notify when a new SW is waiting */
+          reg.addEventListener('updatefound', () => {
+            const newSW = reg.installing;
+            newSW?.addEventListener('statechange', () => {
+              if (newSW.state === 'installed' && navigator.serviceWorker.controller) {
+                console.log('[Cobinar] New SW available. Will activate on next load.');
+                /* Optional: show a "Refresh for update" toast here */
+              }
+            });
+          });
+        })
+        .catch(err => console.warn('[Cobinar] SW registration failed:', err));
+    });
+  }
+})();
+</script>
